@@ -2,24 +2,18 @@ from django.contrib import admin
 from django.urls import path
 from ninja import NinjaAPI
 
-from user.authentication import bearer_auth
 from user.exceptions import NotAuthorizedException, UserNotFoundException
-
+from user.urls import router as user_router
 
 base_api = NinjaAPI(title="Ecommerce", version="0.0.0")
+
+
+base_api.add_router("users", user_router)
 
 
 @base_api.get("")
 def health_check_handler(request):
     return {"ping": "pong"}
-
-
-@base_api.get("/auth-test", auth=bearer_auth)
-def auth_test(request):
-    return {
-        "token": request.auth,
-        "email": request.user.email,
-    }
 
 
 @base_api.exception_handler(NotAuthorizedException)
