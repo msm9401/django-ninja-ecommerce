@@ -4,11 +4,13 @@ from ninja import NinjaAPI
 
 from user.exceptions import NotAuthorizedException, UserNotFoundException
 from user.urls import router as user_router
+from product.urls import router as product_router
 
 base_api = NinjaAPI(title="Ecommerce", version="0.0.0")
 
 
 base_api.add_router("users", user_router)
+base_api.add_router("products", product_router)
 
 
 @base_api.get("")
