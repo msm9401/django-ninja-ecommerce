@@ -1,6 +1,7 @@
 import time
 from typing import TypedDict, ClassVar
 
+from django.http import HttpRequest
 import jwt
 from django.conf import settings
 from ninja.security import HttpBearer
@@ -59,6 +60,10 @@ class BearerAuth(HttpBearer):
             raise UserNotFoundException
         request.user = user
         return token
+
+
+class AuthRequest(HttpRequest):
+    user: ServiceUser
 
 
 bearer_auth = BearerAuth()
