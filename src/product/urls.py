@@ -3,18 +3,39 @@ from typing import Dict, List
 from django.contrib.postgres.search import SearchQuery
 from django.db import transaction
 from django.http import HttpRequest
+from django.db.models import F
 from ninja import Router
 
-from config.response import ErrorResponse, ObjectResponse, error_response, response
-from product.exceptions import OrderInvalidProductException
-from product.models import Category, Order, OrderLine, Product, ProductStatus
-from product.request import OrderRequestBody
+from config.response import (
+    ErrorResponse,
+    ObjectResponse,
+    OkResponse,
+    error_response,
+    response,
+)
+from product.exceptions import (
+    OrderAlreadyPaidException,
+    OrderInvalidProductException,
+    OrderNotFoundException,
+    OrderPaymentConfirmFailedException,
+)
+from product.service import payment_service
+from product.models import (
+    Category,
+    Order,
+    OrderLine,
+    OrderStatus,
+    Product,
+    ProductStatus,
+)
+from product.request import OrderPaymentConfirmRequestBody, OrderRequestBody
 from product.response import (
     CategoryListResponse,
     OrderDetailResponse,
     ProductListResponse,
 )
 from user.authentication import bearer_auth, AuthRequest
+from user.models import ServiceUser
 
 
 router = Router(tags=["Products"])
@@ -112,3 +133,37 @@ def order_products_handler(request: AuthRequest, body: OrderRequestBody):
         OrderLine.objects.bulk_create(objs=order_lines_to_create)
 
     return 201, response({"id": order.id, "total_price": order.total_price})
+
+
+@router.post(
+    "/orders/{order_id}/confirm",
+    response={
+        200: ObjectResponse[OkResponse],
+        400: ObjectResponse[ErrorResponse],
+        404: ObjectResponse[ErrorResponse],
+    },
+    auth=bearer_auth,
+)
+def confirm_order_payment_handler(
+    request: AuthRequest, order_id: int, body: OrderPaymentConfirmRequestBody
+):
+    if not (order := Order.objects.filter(id=order_id, user=request.user).first()):
+        return 404, error_response(msg=OrderNotFoundException.message)
+
+    if not payment_service.confirm_payment(
+        payment_key=body.payment_key, amount=order.total_price
+    ):
+        return 400, error_response(msg=OrderPaymentConfirmFailedException.message)
+
+    with transaction.atomic():
+        success: int = Order.objects.filter(
+            id=order_id, status=OrderStatus.PENDING
+        ).update(status=OrderStatus.PAID)
+        if not success:
+            return 400, error_response(msg=OrderAlreadyPaidException.message)
+
+        ServiceUser.objects.filter(id=request.user.id).update(
+            order_count=F("order_count") + 1
+        )
+
+    return 200, response(OkResponse())
