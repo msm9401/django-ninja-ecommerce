@@ -17,9 +17,7 @@ from product.exceptions import (
     OrderAlreadyPaidException,
     OrderInvalidProductException,
     OrderNotFoundException,
-    OrderPaymentConfirmFailedException,
 )
-from product.service import payment_service
 from product.models import (
     Category,
     Order,
@@ -35,6 +33,7 @@ from product.response import (
     ProductListResponse,
 )
 from user.authentication import bearer_auth, AuthRequest
+from user.exceptions import UserPointsNotEnoughException
 from user.models import ServiceUser
 
 
@@ -150,10 +149,11 @@ def confirm_order_payment_handler(
     if not (order := Order.objects.filter(id=order_id, user=request.user).first()):
         return 404, error_response(msg=OrderNotFoundException.message)
 
-    if not payment_service.confirm_payment(
-        payment_key=body.payment_key, amount=order.total_price
-    ):
-        return 400, error_response(msg=OrderPaymentConfirmFailedException.message)
+    # # 결제 시스템
+    # if not payment_service.confirm_payment(
+    #     payment_key=body.payment_key, amount=order.total_price
+    # ):
+    #     return 400, error_response(msg=OrderPaymentConfirmFailedException.message)
 
     with transaction.atomic():
         success: int = Order.objects.filter(
@@ -162,8 +162,13 @@ def confirm_order_payment_handler(
         if not success:
             return 400, error_response(msg=OrderAlreadyPaidException.message)
 
+        user = ServiceUser.objects.select_for_update().get(id=request.user.id)  # lock
+        if user.points < order.total_price:
+            return 409, error_response(msg=UserPointsNotEnoughException.message)
+
         ServiceUser.objects.filter(id=request.user.id).update(
-            order_count=F("order_count") + 1
+            points=F("points") - order.total_price,
+            order_count=F("order_count") + 1,
         )
 
     return 200, response(OkResponse())
