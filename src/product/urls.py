@@ -33,7 +33,7 @@ from product.response import (
     ProductListResponse,
 )
 from user.authentication import bearer_auth, AuthRequest
-from user.exceptions import UserPointsNotEnoughException
+from user.exceptions import UserPointsNotEnoughException, UserVersionConflictException
 from user.models import ServiceUser
 
 
@@ -162,13 +162,31 @@ def confirm_order_payment_handler(
         if not success:
             return 400, error_response(msg=OrderAlreadyPaidException.message)
 
-        user = ServiceUser.objects.select_for_update().get(id=request.user.id)  # lock
+        # # pessimistic lock
+        # user = ServiceUser.objects.select_for_update().get(id=request.user.id)  # lock
+        # if user.points < order.total_price:
+        #     return 409, error_response(msg=UserPointsNotEnoughException.message)
+
+        # ServiceUser.objects.filter(id=request.user.id).update(
+        #     points=F("points") - order.total_price,
+        #     order_count=F("order_count") + 1,
+        # )
+
+        # optimistic lock
+        user = ServiceUser.objects.get(id=request.user.id)
         if user.points < order.total_price:
             return 409, error_response(msg=UserPointsNotEnoughException.message)
 
-        ServiceUser.objects.filter(id=request.user.id).update(
+        success: int = ServiceUser.objects.filter(
+            id=request.user.id, version=user.version
+        ).update(
             points=F("points") - order.total_price,
             order_count=F("order_count") + 1,
+            version=user.version + 1,
         )
+        if not success:
+            return 409, error_response(msg=UserVersionConflictException.message)
+
+        # 트랜잭션 실패로 인한 rollback시 retry로직이나 프론트에서 재요청 하는 정책 수립 필요
 
     return 200, response(OkResponse())

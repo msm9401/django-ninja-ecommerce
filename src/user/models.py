@@ -5,6 +5,7 @@ class ServiceUser(models.Model):
     email = models.EmailField()
     order_count = models.PositiveIntegerField(default=0)
     points = models.PositiveIntegerField(default=0)
+    version = models.PositiveIntegerField(default=0)
 
     class Meta:
         app_label = "user"
