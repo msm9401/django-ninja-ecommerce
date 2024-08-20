@@ -3,7 +3,7 @@ from schema import Schema
 
 from product.models import Order, OrderLine, OrderStatus, Product, ProductStatus
 from user.authentication import authentication_service
-from user.models import ServiceUser
+from user.models import ServiceUser, UserPointsHistory
 
 
 @pytest.mark.django_db
@@ -88,3 +88,4 @@ def test_confirm_order(api_client):
     assert Order.objects.get(id=order.id).status == OrderStatus.PAID
     assert ServiceUser.objects.get(id=user.id).order_count == 1
     assert ServiceUser.objects.get(id=user.id).points == 0
+    assert UserPointsHistory.objects.filter(user=user, points_change=-1000).exists()

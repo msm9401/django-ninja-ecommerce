@@ -26,7 +26,7 @@ from product.models import (
     Product,
     ProductStatus,
 )
-from product.request import OrderPaymentConfirmRequestBody, OrderRequestBody
+from product.request import OrderRequestBody
 from product.response import (
     CategoryListResponse,
     OrderDetailResponse,
@@ -34,7 +34,7 @@ from product.response import (
 )
 from user.authentication import bearer_auth, AuthRequest
 from user.exceptions import UserPointsNotEnoughException, UserVersionConflictException
-from user.models import ServiceUser
+from user.models import ServiceUser, UserPointsHistory
 
 
 router = Router(tags=["Products"])
@@ -143,9 +143,7 @@ def order_products_handler(request: AuthRequest, body: OrderRequestBody):
     },
     auth=bearer_auth,
 )
-def confirm_order_payment_handler(
-    request: AuthRequest, order_id: int, body: OrderPaymentConfirmRequestBody
-):
+def confirm_order_payment_handler(request: AuthRequest, order_id: int):
     if not (order := Order.objects.filter(id=order_id, user=request.user).first()):
         return 404, error_response(msg=OrderNotFoundException.message)
 
@@ -186,6 +184,12 @@ def confirm_order_payment_handler(
         )
         if not success:
             return 409, error_response(msg=UserVersionConflictException.message)
+
+        UserPointsHistory.objects.create(
+            user=user,
+            points_change=-order.total_price,
+            reason=f"orders:{order.id}:confirm",
+        )
 
         # 트랜잭션 실패로 인한 rollback시 retry로직이나 프론트에서 재요청 하는 정책 수립 필요
 
