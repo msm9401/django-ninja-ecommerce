@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from django.db import models
 
 
@@ -13,3 +15,9 @@ class ServiceUser(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["email"], name="unique_email"),
         ]
+
+    def create_order_code(self) -> str:
+        """
+        사용자 별로 초당 한 번만 생성되는 order_code
+        """
+        return datetime.utcnow().strftime("%Y%m%d-%H%M%S") + f"-{self.id}"
